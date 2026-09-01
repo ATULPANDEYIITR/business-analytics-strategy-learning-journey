@@ -1,5 +1,5 @@
 # ============================================================
-# DAY 01: BUSINESS FUNDAMENTALS IN ANALYTICS AND STRATEGY
+# DAY 00: BUSINESS FUNDAMENTALS IN ANALYTICS AND STRATEGY
 # ============================================================
 
 print("DAY 01 - BUSINESS FUNDAMENTALS IN ANALYTICS AND STRATEGY")
