@@ -1,0 +1,94 @@
+<!-- File: web/index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+        name="description"
+        content="Interactive statistical thinking dashboard for business decisions."
+    >
+    <title>Statistical Thinking for Business Decisions</title>
+    <link rel="stylesheet" href="styles.css">
+    <script
+        src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"
+        defer
+    ></script>
+    <script src="app.js" defer></script>
+</head>
+<body>
+    <main class="container">
+        <header>
+            <p class="eyebrow">Business analytics laboratory</p>
+            <h1>Statistical thinking for business decisions</h1>
+            <p>
+                Inspect variation, distributions, relationships, and uncertainty
+                before turning data into a business decision.
+            </p>
+        </header>
+
+        <section class="panel">
+            <h2>Descriptive statistics</h2>
+            <form id="analyze-form">
+                <label for="observations">Observations</label>
+                <input
+                    id="observations"
+                    name="observations"
+                    type="text"
+                    value="120, 135, 128, 142, 155, 149, 131, 160"
+                    aria-describedby="input-help"
+                >
+                <small id="input-help">
+                    Enter comma-separated numerical observations.
+                </small>
+                <button type="submit">Analyze data</button>
+            </form>
+
+            <div id="statistics-output" class="metrics"></div>
+            <div id="message" class="message"></div>
+        </section>
+
+        <section class="panel chart-panel">
+            <h2>Observed variation</h2>
+            <div class="chart-container">
+                <canvas id="business-chart"></canvas>
+            </div>
+        </section>
+
+        <section class="concepts">
+            <article>
+                <h2>Descriptive statistics</h2>
+                <p>
+                    Describe what happened in the observed sample using measures
+                    such as mean, median, range, and standard deviation.
+                </p>
+            </article>
+
+            <article>
+                <h2>Inference</h2>
+                <p>
+                    Use samples to reason about populations while explicitly
+                    representing sampling uncertainty.
+                </p>
+            </article>
+
+            <article>
+                <h2>Causation</h2>
+                <p>
+                    Association between variables does not automatically prove
+                    that changing one variable caused another to change.
+                </p>
+            </article>
+
+            <article>
+                <h2>Decision quality</h2>
+                <p>
+                    A statistically detectable difference can still be too small,
+                    expensive, risky, or operationally difficult to matter.
+                </p>
+            </article>
+        </section>
+    </main>
+</body>
+</html>
