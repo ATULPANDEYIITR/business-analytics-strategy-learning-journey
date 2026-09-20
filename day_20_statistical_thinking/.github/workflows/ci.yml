@@ -1,0 +1,60 @@
+# File: .github/workflows/ci.yml
+
+name: Continuous Integration
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Check formatting and lint rules
+        run: ruff check .
+
+      - name: Run Python tests
+        run: pytest
+
+  cpp:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake
+        run: cmake -S . -B build
+
+      - name: Build C++ project
+        run: cmake --build build --config Release
+
+      - name: Run C++ executable
+        run: ./build/statistical_business
+
+  web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify frontend files
+        run: |
+          test -f web/index.html
+          test -f web/styles.css
+          test -f web/app.js
