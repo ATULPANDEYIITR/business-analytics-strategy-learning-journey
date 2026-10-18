@@ -1,0 +1,458 @@
+# Cohort Analysis: Retention and Customer Behavior Over Time
+
+## Purpose
+
+Cohort analysis groups customers according to a shared starting point and then observes their behavior across subsequent periods. In this implementation, the default cohort boundary is the customer's signup month.
+
+The important distinction is between **calendar time** and **customer-relative time**.
+
+A customer who signs up in January and remains active in February is in period M1. A customer who signs up in March and remains active in April is also in M1. Cohort analysis therefore makes behavior comparable across acquisition periods even though the customers entered the product at different calendar dates.
+
+The six deliverables use different technical perspectives:
+
+- Python builds a reusable cohort-analysis engine with validation, retention calculations, revenue analysis, segmentation, and inactivity-based churn.
+- JavaScript models event-driven cohort processing using `Map`, `Set`, immutable normalized records, validation, and asynchronous event processing.
+- C++ combines a customer cohort reporting component with a repository-governance case study to demonstrate how a state-evaluation engine can enforce explicit conditions.
+- Java models cohort behavior and repository governance using records, enums, collections, domain objects, and a merge-eligibility service.
+- PostgreSQL represents customer events and cohort calculations relationally while separately modeling Pull Requests, reviews, approvals, status checks, and branch protection.
+- The implementations deliberately avoid treating raw event volume as equivalent to customer activity.
+
+## Cohort Analysis Model
+
+The fundamental relationship is:
+
+`customer -> signup cohort -> elapsed period -> activity`
+
+For a monthly cohort, the signup date is normalized to the beginning of its month.
+
+For example:
+
+| Customer | Signup month | Activity month | Relative period |
+|---|---|---|---:|
+| C001 | 2026-01 | 2026-01 | M0 |
+| C001 | 2026-01 | 2026-02 | M1 |
+| C001 | 2026-01 | 2026-03 | M2 |
+| C005 | 2026-02 | 2026-02 | M0 |
+| C005 | 2026-02 | 2026-03 | M1 |
+
+The relative period is more useful than simply reporting February activity because February means something different to a January acquisition cohort and a February acquisition cohort.
+
+## Retention
+
+Retention measures the proportion of the original cohort that remains active during a later period.
+
+The basic calculation used by the implementations is:
+
+`retention(period) = unique active customers in period / original cohort size`
+
+A customer with ten login events in one month still counts as one retained customer. This is why the implementations use sets or `COUNT(DISTINCT customer_id)` when constructing activity periods.
+
+The distinction is important because raw event counts measure engagement volume, while retention measures customer persistence.
+
+A cohort with 1,000 customers and 250 active customers in M1 has 25% M1 retention. If those 250 customers generated 4,000 events, the retention rate remains 25%.
+
+## M0 and Subsequent Periods
+
+M0 represents the customer's initial cohort period.
+
+M1 represents the first subsequent calendar month relative to the signup month.
+
+M2 represents the second subsequent month.
+
+This produces a retention curve:
+
+`M0 -> M1 -> M2 -> M3 -> ...`
+
+The curve can reveal whether a product loses customers immediately after acquisition or whether attrition occurs gradually.
+
+M0 is usually close to 100% when signup itself is treated as an activity event. It should not automatically be interpreted as a meaningful retention benchmark because it largely describes the cohort definition.
+
+## Cohort Size
+
+Cohort size is the number of unique customers assigned to the cohort.
+
+The denominator must remain stable when calculating retention. If the denominator changes for every period, retention becomes difficult to interpret.
+
+The SQL implementation creates cohort membership independently from activity so that the original cohort population remains explicit.
+
+This separation also makes it possible to calculate additional measures such as revenue per acquired customer.
+
+## Behavioral Events
+
+The examples distinguish between different customer events:
+
+- `signup` establishes the acquisition starting point.
+- `login` represents product activity without necessarily generating revenue.
+- `purchase` contributes monetary value.
+- `feature_use` represents functional engagement.
+- `support_contact` can be used to study customers whose behavior includes service interactions.
+
+These event types should not automatically be treated as interchangeable.
+
+A product may define retention around login, meaningful feature usage, transaction completion, or another domain-specific event. The correct activity definition depends on the business question.
+
+## Revenue Cohorts
+
+Retention and revenue answer different questions.
+
+Retention asks whether customers remain active.
+
+Revenue asks how much economic value is generated by customers in a cohort.
+
+The Python and SQL implementations therefore maintain revenue separately from active-customer counts.
+
+A cohort can have relatively weak retention but strong revenue if a smaller group of retained customers spends substantially more. Conversely, a cohort can have strong retention but low revenue if many customers remain active without purchasing.
+
+Useful cohort revenue measures include:
+
+- Revenue by relative period.
+- Cumulative revenue per cohort.
+- Revenue per original customer.
+- Revenue per active customer.
+- Revenue segmented by acquisition channel or plan.
+
+The denominator must be stated clearly whenever revenue is converted into a per-customer metric.
+
+## Segmentation
+
+The Python and JavaScript implementations show segmentation by acquisition channel and subscription plan.
+
+This matters because aggregate retention can conceal substantial differences.
+
+For example, an overall M1 retention rate might be 40%, while the underlying segments are:
+
+| Segment | M1 retention |
+|---|---:|
+| Organic | 55% |
+| Referral | 48% |
+| Paid | 25% |
+
+The aggregate number does not explain whether the acquisition source, product plan, or customer population is driving the difference.
+
+Segmentation should be performed using a clearly defined attribute captured at cohort entry whenever that attribute represents the intended acquisition or customer state.
+
+## Python Implementation
+
+The Python implementation uses `Customer`, `Event`, and `CohortMetrics` data classes to keep customer identity, acquisition information, event behavior, and calculated results distinct.
+
+`CohortAnalyzer.month_start()` establishes monthly cohort boundaries.
+
+`month_offset()` converts calendar dates into customer-relative periods. This is the key operation that transforms ordinary event timestamps into cohort-analysis coordinates.
+
+`monthly_activity()` stores customer identifiers in sets. The set is essential because repeated events by the same customer within the same month must not inflate the active-customer count.
+
+`retention_table()` converts those active sets into cohort retention percentages.
+
+`revenue_by_cohort()` performs a separate aggregation for monetary behavior rather than mixing revenue with activity.
+
+`plan_retention()` demonstrates a second cohort dimension. It calculates retention separately for subscription plans so that plan-specific behavior can be compared without changing the underlying customer cohort definition.
+
+The script also validates duplicate customer IDs, unknown customers, negative revenue, and events occurring before signup.
+
+The inactivity calculation demonstrates a behavioral churn definition. It should not be confused with contractual churn, subscription cancellation, or billing-system churn. The chosen definition is based only on observed activity.
+
+## JavaScript Implementation
+
+The JavaScript implementation uses `Map` and `Set` as the core data structures.
+
+`Map` provides explicit associations between cohorts, periods, and aggregated values. `Set` prevents repeated events from the same customer from counting as multiple active customers.
+
+Customer and event normalization occurs before the analysis engine operates on the data. Invalid dates, missing identifiers, invalid event types, negative revenue, unknown customers, and pre-signup events are rejected.
+
+The `CustomerCohortEngine` separates:
+
+- cohort membership,
+- activity construction,
+- retention,
+- revenue,
+- segment analysis,
+- asynchronous event processing.
+
+The asynchronous `processEventsAsync()` method demonstrates how a cohort-processing design can fit into an event-driven JavaScript application. It does not require an external package and uses asynchronous scheduling while retaining the same customer-level identity rules.
+
+The JavaScript implementation is intentionally not a direct translation of the Python structure. It emphasizes JavaScript collections, immutable normalized objects, `Map`/`Set` semantics, and asynchronous event processing.
+
+## C++ Case Study
+
+The C++ program presents a repository-governance engine alongside cohort reporting.
+
+The governance scenario represents a protected `main` branch receiving a Pull Request from a feature branch. The engine evaluates:
+
+- whether the Pull Request is open,
+- whether it is still a draft,
+- whether it contains commits,
+- whether merge conflicts exist,
+- whether required review decisions are present,
+- whether an eligible reviewer requested changes,
+- whether required status checks passed,
+- whether review validity was affected by a base-branch change,
+- whether the required approval count was reached.
+
+`BranchPolicy` represents repository-level rules.
+
+`PullRequest` represents the proposed change itself.
+
+`Review` represents a review decision rather than the Pull Request as a whole.
+
+`GovernanceEngine` evaluates merge eligibility from those distinct pieces of state.
+
+This separation is important because the four governance concepts have different responsibilities.
+
+A **Pull Request** is the change-proposal and merge workflow.
+
+**Code Review** evaluates the proposed change through comments, discussions, and review states.
+
+An **Approval** is a particular positive review decision made by an eligible reviewer.
+
+**Branch Protection** imposes repository-level conditions that must be satisfied before the Pull Request can be merged.
+
+The case study also demonstrates a failed security check and merge conflict. Both independently prevent merge eligibility even though the review approvals are present.
+
+## Pull Request Mechanics
+
+A Pull Request connects a source branch containing proposed changes to a target branch receiving those changes.
+
+The source and target are deliberately modeled as separate values because their roles differ.
+
+The changeset consists of commits associated with the Pull Request. A Pull Request can be opened, updated with additional commits, synchronized with the target branch, placed into draft state, reopened, closed, or eventually merged.
+
+Synchronization matters because the target branch can advance while the Pull Request is under review. New target-branch changes can produce conflicts or invalidate assumptions that were true when an earlier review occurred.
+
+A draft Pull Request communicates that the proposed change is not yet ready for normal merge processing. The C++ and Java implementations treat draft state as a merge blocker.
+
+Merge strategy is separate from review quality. A repository may permit merge commits, squash merges, rebase merges, or a restricted subset. The selected strategy determines how the accepted changes are represented in the target branch.
+
+## Code Review
+
+Code Review is the evaluation layer surrounding the proposed change.
+
+A reviewer may inspect changed files, add inline comments, participate in conversations, identify defects, request changes, or approve the proposed work.
+
+A review comment is not itself an approval.
+
+The Python, JavaScript, C++, and Java implementations maintain this distinction by treating customer behavior, review decisions, and merge policy as separate concepts rather than a single status flag.
+
+A useful review process evaluates correctness, maintainability, security, test coverage, compatibility, operational impact, and whether the change satisfies its intended requirement.
+
+Review scope should match the change. A small configuration change does not require the same review depth as a database migration or authentication change, but both still require appropriate validation.
+
+Unresolved review discussions can remain a merge blocker when repository policy requires conversation resolution.
+
+## Approvals
+
+Approval represents a positive review decision from an eligible reviewer.
+
+The existence of an approval does not necessarily mean a Pull Request can merge.
+
+The Java and C++ implementations distinguish reviewer eligibility from the review state itself. An ineligible reviewer can submit an approval without satisfying a required-review policy.
+
+A protected branch can require multiple independent eligible approvals. Counting unique reviewer identities prevents one reviewer from satisfying a two-reviewer requirement by submitting multiple approvals.
+
+Stale approval handling is important when the underlying changes change after the approval was granted. The SQL model includes `base_changed_after_review`, and the application models treat such a state as requiring revalidation.
+
+Approval dismissal is also distinct from rejection. A dismissed approval no longer represents an active approval decision even though the historical review record may remain useful for auditing.
+
+## Branch Protection
+
+Branch Protection operates at the repository governance level.
+
+The PostgreSQL model stores branch protection independently from individual Pull Requests.
+
+The represented controls include:
+
+- required approvals,
+- stale approval dismissal policy,
+- required status checks,
+- required conversation resolution,
+- direct-push restrictions,
+- force-push restrictions,
+- deletion restrictions,
+- linear-history requirements,
+- allowed merge strategies.
+
+These rules apply to a protected target branch rather than representing the reviewer's opinion about a specific line of code.
+
+This distinction prevents a common conceptual error: an approval is a review decision, while branch protection is a repository policy that can require approvals and other conditions.
+
+Direct-push restrictions can ensure that changes to a protected branch enter through the governed Pull Request path.
+
+Force-push restrictions protect branch history from destructive rewriting.
+
+Deletion restrictions prevent accidental removal of a critical branch.
+
+Required status checks connect automated validation to merge eligibility.
+
+## SQL Data Model
+
+The PostgreSQL schema contains a customer cohort domain and a repository-governance domain.
+
+The customer portion uses:
+
+`customers`
+
+This stores signup date, acquisition channel, and plan.
+
+`customer_events`
+
+This stores time-based behavioral events and revenue.
+
+The repository portion uses:
+
+`repositories`
+
+This identifies the repository.
+
+`repository_branches`
+
+This separates source and target branch identity and records whether a branch is protected.
+
+`pull_requests`
+
+This stores Pull Request lifecycle state, source branch, target branch, draft state, conflicts, conversation status, and base-branch review validity.
+
+`commits`
+
+This associates concrete commits with Pull Requests.
+
+`reviewers`
+
+This establishes reviewer identity and active status.
+
+`reviews`
+
+This stores review state, eligibility, and reviewer association.
+
+`review_comments`
+
+This represents inline review discussions and their resolution state.
+
+`status_checks`
+
+This stores automated validation results associated with a Pull Request.
+
+`branch_protection`
+
+This stores repository policy applied to a protected branch.
+
+`required_status_checks`
+
+This records the specific checks required by a branch policy.
+
+The foreign keys enforce relationships at the database layer instead of leaving every integrity rule to application code.
+
+## Cohort SQL Queries
+
+`cohort_members` establishes each customer's signup cohort.
+
+`cohort_activity` transforms event timestamps into customer-relative periods. The `DISTINCT` operation is important because multiple events from one customer during one period must not produce multiple retention observations.
+
+`cohort_retention` calculates the active customer count and retention percentage for each cohort-period combination.
+
+`cohort_revenue` independently aggregates revenue by cohort and relative period.
+
+`cohort_channel_retention` adds acquisition-channel segmentation without changing the underlying cohort definition.
+
+These views make cohort logic reusable by reporting queries and downstream database consumers.
+
+## Database Integrity
+
+The database uses `CHECK` constraints to prevent negative revenue and invalid approval counts.
+
+Foreign keys prevent events from referencing nonexistent customers and prevent review records from referencing nonexistent Pull Requests or reviewers.
+
+Unique constraints prevent duplicate customer external keys, duplicate repository branch names within a repository, duplicate status-check names for a Pull Request, and duplicate commit hashes within a Pull Request.
+
+Indexes are placed on event timestamps and customer identifiers because cohort analysis frequently joins customers to events and filters activity by time.
+
+## Merge Eligibility in PostgreSQL
+
+The `merge_eligibility()` function demonstrates database-level evaluation of governance state.
+
+It evaluates:
+
+- Pull Request lifecycle state,
+- draft status,
+- merge conflicts,
+- base-branch changes after review,
+- approval count,
+- requested changes,
+- failed status checks,
+- unresolved review conversations.
+
+The function returns both a Boolean eligibility result and a human-readable blocker.
+
+This is useful when database-driven workflows need a consistent merge-policy evaluation rather than relying only on client-side checks.
+
+The transaction at the end temporarily changes the base-branch review state, evaluates eligibility, and rolls the change back. This demonstrates how transactional analysis can inspect a policy consequence without leaving the demonstration database in a modified state.
+
+## Retention and Churn Interpretation
+
+Retention should always have an explicit activity definition.
+
+If activity means "logged in at least once," the resulting metric is login retention.
+
+If activity means "completed a meaningful workflow," the metric represents workflow retention.
+
+If activity means "made a purchase," the metric becomes transactional retention.
+
+Those metrics can produce very different cohort curves.
+
+Churn also requires an explicit definition. The Python example uses consecutive inactivity as a behavioral rule. A subscription product may instead define churn using cancellation records, expired subscriptions, failed renewals, or contractual termination.
+
+The observation window creates another important limitation. A recent cohort cannot have a meaningful M6 value until six months of observable data exist.
+
+## Common Analytical Errors
+
+Counting events instead of customers can dramatically overstate retention when highly active customers generate many events.
+
+Changing the denominator between periods makes retention percentages difficult to compare.
+
+Comparing cohorts with incomplete observation windows can create an artificial impression that newer cohorts perform worse.
+
+Ignoring acquisition-channel mix can hide changes in marketing quality.
+
+Ignoring plan mix can make product-level retention appear to change when the customer population has actually changed.
+
+Treating all event types as equivalent can convert an activity metric into a misleading proxy for retention.
+
+Using an unqualified churn definition can mix behavioral inactivity with contractual cancellation.
+
+## Performance Considerations
+
+Cohort analysis is fundamentally an aggregation problem.
+
+The Python implementation uses dictionaries and sets to provide direct customer and cohort lookups.
+
+The JavaScript implementation uses `Map` and `Set` for similar identity-preserving aggregation.
+
+The C++ implementation uses `unordered_map` for expected constant-time customer lookup and sets for unique active-customer tracking.
+
+The PostgreSQL implementation uses indexes on event/customer relationships and performs distinct aggregation at the database layer.
+
+For large production event streams, raw events should normally be processed incrementally or partitioned by time rather than repeatedly scanning the entire historical event table for every dashboard request.
+
+Pre-aggregated daily or monthly customer activity can substantially reduce repeated computation while preserving the customer-level uniqueness required for retention.
+
+## Security and Data Quality
+
+Customer identifiers should be stable internal identifiers rather than unnecessary exposure of personally identifiable information.
+
+Access to cohort data should follow the sensitivity of the underlying customer information.
+
+Revenue data requires particular care because cohort reports can expose commercially sensitive performance differences between acquisition channels or customer segments.
+
+Input validation should reject impossible event timestamps, negative monetary values, unknown customer identifiers, and malformed customer records.
+
+The repository-governance model similarly treats eligibility as a policy decision rather than trusting client-provided claims. Reviewer eligibility, status-check results, and branch policies should be authoritative records controlled by the repository system.
+
+## Practical Interpretation
+
+A useful cohort report does not stop at a retention percentage.
+
+A declining curve can indicate onboarding friction, weak product value, acquisition-quality problems, pricing changes, or a mismatch between the activity definition and actual customer value.
+
+A stronger cohort analysis compares cohorts against meaningful segmentation variables and examines retention together with revenue and behavioral events.
+
+The implementations therefore preserve the underlying customer identity and event history instead of reducing the dataset immediately to a single percentage.
+
+This makes the resulting analysis suitable for investigating why customer behavior changes over time rather than merely reporting that it changed.
